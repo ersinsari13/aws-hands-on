@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: |
+  This Template create vpc,internetgateway, private route tables ,public route tables,private subnet and public subnet.
+  we attached internet gateway to base vpc and then attached internet gataway to Public Route Table.
+  Finally wa associated Private subnet to Private Route Table and PublicSubnet to Public Route Table. 
+  
+
+Parameters:
+  
+
+Resources:
+  
+  PrivateSubnetAttach:                              #tenth step We attached PrivateSubnet1a to Private Route Table
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRT  # Required
+      SubnetId: !Ref SubnetPrivate1A # Required
+  
+  PublicSubnetAttach:
+    Type: AWS::EC2::SubnetRouteTableAssociation       #nineth step We attached PublicSubnet1a to Public Route Table
+    Properties:
+      RouteTableId: !Ref PublicRT # Required
+      SubnetId: !Ref SubnetPublic1A # Required
+  
+  SubnetPrivate1A:                  #Eight step We created Subnet on AZ 1A and named SubneyPrivate1a
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: "us-east-1a"
+      CidrBlock: "10.10.2.0/24"
+      Tags: 
+        - Key: Name
+          Value: Private-1A
+      VpcId: !Ref VPC # Required
+  
+  SubnetPublic1A:                    #Seventh step We created Subnet on AZ 1A and named SubneyPublic1a
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: "us-east-1a"
+      CidrBlock: "10.10.1.0/24"
+      Tags: 
+        - Key: Name
+          Value: Public-1A
+      VpcId: !Ref VPC # Required
+  
+  AttachRt:                             # Sixth step We attached internet gateway to Public Route Table
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId: !Ref PublicRT  # Required
+      GatewayId: !Ref InternetGateway
+  
+  PublicRT:                              #Fifth step We created  second route table and named Public Route Table
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags: 
+        - Key: Name
+          Value: Public
+      VpcId: !Ref VPC # Required
+  
+  PrivateRT:                              #Fourth step We created route table and named Private Route Table
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags: 
+        - Key: Name
+          Value: Private
+      VpcId: !Ref VPC # Required
+  
+  InternetGateAttachtoVpc:                   #Thirth step we attached internet gateway to base vpc
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC # Required
+  
+  InternetGateway:                  #Second step we created internet gateway. 
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: 
+        - Key: Name
+          Value: InternetGateway
+
+  VPC:                       #First step We created base vpc.
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.10.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags: 
+        - Key: Name
+          Value: cfn-vpc
+  
