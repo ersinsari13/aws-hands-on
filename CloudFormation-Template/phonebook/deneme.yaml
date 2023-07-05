@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: |
+  This is for rds,ELB,ASG,İnstance and 3 security groups.
+Parameters:
+
+  VPC:
+    Description: Select a vpc
+    Type: AWS::EC2::VPC::Id
+
+  Subnet:
+    Description: Select a subnet
+    Type: List<AWS::EC2::Subnet::Id>
+  
+  KeyPair:
+    Description: Select a key-pair
+    Type: AWS::EC2::KeyPair::KeyName
+  
+  DatabaseType:
+    Description: Select a database type
+    Type: String
+    Default: db.t2.micro
+    AllowedValues:
+         - db.t2.micro
+         - db.t3.micro
+         - db.t2.nano
+  
+Resources:
+  
+  Rds:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: !Ref DatabaseType
+      DBInstanceIdentifier: database-1
+      DBName: "clarusway_phonebook"
+      Engine: MySQL
+      EngineVersion: 8.0.28
+      MasterUserPassword: clarusway_1234
+      MasterUsername: admin
+      Port: 3306
+      PubliclyAccessible: true
+      VPCSecurityGroups: 
+        - !GetAtt Ec2SecGroup.GroupId
+  
+  AutoPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScal # Required
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 60.0
+  
+  AutoScal:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: "Auto-Scal"
+      AvailabilityZones: 
+        !GetAZs ""
+      DesiredCapacity: 2
+      HealthCheckGracePeriod: 90
+      HealthCheckType: "ELB"
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemp
+        Version: !GetAtt LaunchTemp.LatestVersionNumber
+      MaxSize: 3 # Required
+      MinSize: 1 # Required
+      TargetGroupARNs: 
+        - !Ref TargetGroup
+  
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions: # Required
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer # Required
+      Port: 80
+      Protocol: HTTP
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 5
+      HealthCheckTimeoutSeconds: 3
+      HealthyThresholdCount: 3
+      Name: Target-Group
+      Port: 80
+      Protocol: HTTP
+      ProtocolVersion: HTTP1
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+  
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: Load-Balancer
+      SecurityGroups: 
+        - !GetAtt LoadBalancerSecGroup.GroupId
+      Subnets: !Ref Subnet
+
+
+  LaunchTemp:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+     LaunchTemplateData:
+      ImageId: ami-090e0fc566929d98b
+      InstanceType: t2.micro
+      KeyName: !Ref KeyPair
+      SecurityGroupIds:
+        - !GetAtt  Ec2SecGroup.GroupId
+      UserData: 
+        Fn::Base64:
+          !Sub
+            - | 
+              #! /bin/bash
+              yum update -y
+              yum install python3 -y
+              yum install python-pip -y
+              pip3 install flask -y
+              pip3 install flask_mysql
+              cd /home/ec2-user
+              echo ${data} > dbserver.endpoint
+              FOLDER="https://raw.githubusercontent.com/ersinsari13/MyProject/main/Project-004-Phonebook-Application"
+              wget $FOLDER/phonebook-app.py
+              mkdir templates
+              cd templates
+              wget $FOLDER/templates/add-update.html
+              wget $FOLDER/templates/delete.html
+              wget $FOLDER/templates/index.html
+              cd ..
+              chmod +x phonebook-app.py
+              python3 phonebook-app.py
+            - data: !GetAtt Rds.Endpoint.Address
+  RdsSecGroup:
+    Type: AWS::RDS::DBSecurityGroup
+    Properties:
+      DBSecurityGroupIngress: # Required
+         - EC2SecurityGroupId: !GetAtt Ec2SecGroup.GroupId
+      GroupDescription: "This is for RDS 3306 enabled" # Required
+  
+  LoadBalancerSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "80 port enabled" # Required
+      GroupName: LoadBalancer-Sec-Group
+      SecurityGroupIngress: 
+       - IpProtocol: tcp
+         FromPort: 80
+         ToPort: 80
+         CidrIp: 0.0.0.0/0
+
+  Ec2SecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "80 port enabled"  # Required
+      GroupName: ec2-sec-group
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt LoadBalancerSecGroup.GroupId
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+Outputs:
+  DnsName:
+    Description: This is for DNS
+    Value: !Join 
+    - ''
+    - - 'http://'
+      - !GetAtt LoadBalancer.DNSName
